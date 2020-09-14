@@ -1,0 +1,513 @@
+---
+title: "HTC Analysis"
+author: "Mickey Rafa"
+date: "FallQ 2016 - SpringQ 2017"
+output:
+  html_notebook:
+    toc: yes
+  html_document:
+    toc: yes
+    toc_depth: 3
+  pdf_document:
+    toc: yes
+    toc_depth: '3'
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(GGally) #for correlation matrix
+library(qgraph) #for cor_auto() function
+library(psych)  #for PCA
+library(extrafont) #for Gill Sans MT
+library(ggfortify)  #ggplots for PCA and clustering
+
+load(".//data/HTCrawtrafprev.Rda")
+load(".//data/trafprevComponents.Rda")
+#HTCrawtrafprev <- HTCrawtrafprev %>% filter(year >= 2006) %>% arrange(year)
+
+HTCdata <- HTCrawtrafprev %>% 
+  filter(year >= 2006) %>% 
+  select(-c(IOS3, country_old))
+```
+
+```{r my_theme, include=TRUE, echo=FALSE}
+my.theme <- theme(
+  plot.title = element_text(color="black", face="bold", size=20, hjust=0), 
+  plot.subtitle = element_text(color="black", size=15, hjust=0), 
+  axis.title = element_text(color="black", face="bold", size=14), 
+  axis.text = element_text(color="black", size=13), 
+  plot.caption = element_text(color="black", size=13), 
+  panel.background = element_rect(fill = "#F7F7F7", colour = NA), 
+  panel.grid.major = element_line(colour = "grey90", size = 0.5),
+  panel.grid.minor = element_line(colour = "grey93", size = 0.5),
+  panel.border = element_rect(colour = "black", size = 0.5, fill=NA, linetype = 1),
+  legend.title = element_blank(), 
+  legend.text = element_text(color="black", size=18, hjust=0),
+  legend.position = 'top',
+  strip.text = element_text(color="black", face="bold", size=16),
+  strip.background = element_rect(fill = "white"))
+
+map.theme <- theme(text = element_text(color = "#FFFFFF"), 
+                   panel.background = element_rect(fill = "#444444"),
+                   plot.background = element_rect(fill = "#444444"),
+                   panel.grid = element_blank(),
+                   plot.title = element_text(size = 50),
+                   plot.subtitle = element_text(size = 25),
+                   plot.caption = element_text(size = 20), 
+                   axis.text = element_blank(),
+                   axis.title = element_blank(),
+                   axis.ticks = element_blank(),
+                   legend.position = "bottom", 
+                   legend.key.size = unit(1, "cm"),
+                   legend.background = element_rect(fill="#444444"),
+                   legend.title = element_blank())
+```
+
+## Correlation Analysis of **trafpres** Component Variables
+
+The default setting of the `cor_auto()` function is to produce a Pearson's correlation matrix. However, if this function is fed binary or ordinal data, it will produce the polychoric correlation matrix. Given that our raw component data is comprised of binary data, a polychoric correlation matrix is required. 
+
+```{r polychorcorrelation, echo=TRUE}
+#Build polychoric correlation matrix
+trafpresCor <- qgraph::cor_auto(HTCdata %>% select(3:61), detectOrdinal = TRUE, 
+                        forcePD = FALSE)
+```
+
+```{r correlation, echo=TRUE, fig.height=6.2}
+#Show correlation matrix of off trafpres component variables
+GGally::ggcorr(trafpresCor, hjust=1.1, layout.exp=10, size=2, label_alpha=.3)
+```
+
+This bird's eye view illustrates that there are some variables of these 59 **trafpres** components that are highly correlated with one another. These coefficients could be used in confirmatory factor analysis (CFA) to determine whether the theorized indices within the dataset seem to cluster. Before experimenting with CFA, we'll experiment with principal components analysis (PCA) as a dimension reduction and index building technique.
+
+These data are complex to analyze together. Some variables, such as **pimp_trafficker** are very commonly coded (1,833), while other variables, like **sex_mainlyboys** are rarely used (only 6 times total in the dataset). With a dataset this unbalanced, PCA will artificially use the uncommon variables to find orthoganals. 
+
+```{r view_uncommon_variables, include=TRUE, echo=FALSE}
+HTCdata %>% 
+  gather(variable, value, 3:61) %>% 
+  group_by(variable) %>% 
+  summarise(`Number of Occurrences` = sum(value)) %>% 
+  arrange(`Number of Occurrences`) %>% 
+  filter(`Number of Occurrences` < 100) 
+```
+
+**Insert heat map of year and variable summed coding. How frequently are variables used? Are some not used consistently across time? This doesn't need to be fully analyzed, but a view of this would be helpful.**
+
+```{r vars_less_than_100, include=TRUE}
+vars_greater_than_100 <- HTCdata %>% 
+  gather(variable, value, 3:61) %>% 
+  group_by(variable) %>% 
+  summarise(sum_value = sum(value)) %>% 
+  arrange(sum_value) %>% 
+  filter(sum_value > 100) %>% 
+  select(variable) %>% 
+  unique()
+
+HTCdata_v2 <- HTCdata %>% 
+  group_by(country, year) %>% 
+  select(c(vars_greater_than_100$variable)) %>% 
+  ungroup()
+```
+
+The following network plots are exploratory and serve to evaluate the relationships between these variables in a different way. Each of the network plots is a subset of the **trafpres** variables with their logical groupings, as a way to explore whether the groups of variables seem to be getting at the same latent variable.
+
+
+## Fit all vars for sub-indices and total HTI
+
+```{r polychorcorrelation_mar18_3, echo=TRUE}
+#Build polychoric correlation matrix
+#ALL VARS
+trafpresCor_pca_apr18 <- qgraph::cor_auto(HTCdata_v2 %>% select(3:42), 
+                                          detectOrdinal = TRUE, forcePD = FALSE)
+```
+
+```{r screeplot_mar18_3, echo=FALSE, fig.height=6.2}
+#Produce scree plot of PCA results and identify PCs > 1
+PCAscree_apr18 <- fa.parallel(trafpresCor_pca_apr18, fa="pc", n.iter=100, show.legend = TRUE, 
+                       main="Scree Plot of Principal Components")
+abline(h=1)
+```
+
+```{r}
+GGally::ggcorr(trafpresCor_pca_apr18, hjust=1.1, layout.exp=4, size=2, label_alpha=.3)
+```
+
+```{r PCAtest_mar18_3, echo=FALSE}
+#Show PCA results
+PCAtest_apr18<- principal(trafpresCor_pca_apr18, nfactors=11, rotate="varimax", 
+                      residuals = TRUE, scores = TRUE)
+PCAtest_apr18
+```
+
+```{r fig.height=6.2}
+pca_scree_vals <- data.frame(PCAscree_apr18$pc.values) %>% 
+  rename(eigenvalues = PCAscree_apr18.pc.values) %>% 
+  mutate(component_number = seq.int(1, 40, 1))
+
+pca_scree_vals %>% 
+  ggplot(., aes(x=component_number, 
+                y=eigenvalues)) + 
+  geom_point(size=2) + 
+  geom_line(size=1) + 
+  ggtitle('Scree plot of eigenvalues of principal components',
+          subtitle = 'Total Human Trafficking Principal Component Index dataset') + 
+  geom_hline(yintercept = 1, linetype = 'dashed', lwd=1, color='red') + 
+  my.theme
+```
+
+## Index building 
+
+```{r load_index_coeff, include=TRUE, echo=TRUE}
+index_coeff_mar18 <- readxl::read_xlsx('.//data/index_building_mar18.xlsx', sheet = 'coeff') %>% 
+  gather(component, coeff, 2:12) %>% 
+  filter(!is.na(coeff),
+         component != 'RC4')
+
+ss_loadings_mar18 <- readxl::read_xlsx('.//data/index_building_mar18.xlsx', sheet = 'ss_loadings') %>% 
+  gather(component, value, 2:12) %>% 
+  filter(var == 'SS loadings',
+         component != 'RC4')
+
+index_coeff_simple_mar18 <- readxl::read_xlsx('.//data/index_building_mar18.xlsx', sheet = 'coeff_simple')
+```
+
+
+```{r mult_CY_obs, include=TRUE, echo=TRUE}
+#identifying and removing multiple CY observations
+mult_CY_obs <- HTCdata_v2 %>% 
+  group_by(country, year) %>% 
+  summarise(count = n()) %>% 
+  arrange(desc(count)) %>% 
+  mutate(country_year = paste(country, year, sep="_")) %>% 
+  filter(count > 1) %>% 
+  ungroup() %>% 
+  select(country_year)
+```
+
+
+```{r}
+HTCdata_index_mar18 <- HTCdata_v2 %>% 
+  mutate(country_year = paste(country, year, sep="_")) %>% 
+  filter(!country_year %in% mult_CY_obs$country_year) %>% 
+  #select(index_coeff_simple_mar18$variable) %>% 
+  gather(variable, value, 3:42) %>% 
+  full_join(x=.,
+            y=index_coeff_mar18,
+            by='variable') %>% 
+  mutate(index_value_stage1 = value * coeff) %>% 
+  group_by(country, year, country_year, component) %>% 
+  summarise(sub_index = sum(index_value_stage1, na.rm = TRUE)) %>% 
+  full_join(x=.,
+            y=ss_loadings_mar18,
+            by='component') %>% 
+  filter(!is.na(component)) %>% 
+  mutate(HTCPI_subindex_score = sub_index * value,
+         sub_index_name = ifelse(component == 'RC1', 'Internal Forced Child Labor Trafficking (PC1)',
+                          ifelse(component == 'RC2', 'General Labor Trafficking (PC2)',
+                          ifelse(component == 'RC3', 'Countries of Origin for Child Trafficking (PC3)',
+                          ifelse(component == 'RC5', 'Internal Sex Trafficking (PC5)',
+                          ifelse(component == 'RC6', 'Domestic Servitude Trafficking (PC6)',
+                          ifelse(component == 'RC7', 'Forced Marriage Trafficking (PC7)',
+                          ifelse(component == 'RC8', 'Transit Countries for Sex & Labor Trafficking (PC8)',
+                          ifelse(component == 'RC9', 'Militia-related Trafficking (PC9)', 
+                          ifelse(component == 'RC10', 'Destination of Child Trafficking (PC10)',
+                                                      'Destination of Child Sex Tourism Trafficking (PC11)')))))))))) %>% 
+  ungroup()
+
+HTCPI_subindices_df <- HTCdata_index_mar18 %>% 
+  select(1:2, 8:9) %>% 
+  filter(year == 2015 | 
+         year == 2014) %>% 
+  spread(sub_index_name, HTCPI_subindex_score)
+
+HTCPI_total_df <- HTCdata_index_mar18 %>% 
+  group_by(country, year) %>% 
+  summarise(HTCPI = sum(HTCPI_subindex_score, na.rm = TRUE))
+
+final_df <- HTCPI_total_df %>% 
+  filter(year == 2015 | 
+         year == 2014) %>% 
+  left_join(x=.,
+            y=HTCPI_subindices_df,
+            by=c('country', 'year')) %>% 
+  ungroup() %>% 
+  mutate(country = recode(country, 'Antigua and Barbuda' = 'Antigua',
+                          'Brunei Darussalam' = 'Brunei',
+                          "Côte d'Ivoire" = 'Ivory Coast',
+                          'Congo, the Democratic Republic of the' = 'Democratic Republic of the Congo',
+                          'Congo' = 'Republic of Congo',
+                          'Cabo Verde' = 'Cape Verde',
+                          'Curaçao' = 'Curacao',
+                          'Micronesia, Federated States of' = 'Micronesia',
+                          'United Kingdom' = 'UK',
+                          'Iran, Islamic Republic of' = 'Iran',
+                          'Korea, Republic of' = 'South Korea',
+                          "Lao People's Democratic Republic" = 'Laos',
+                          'Moldova, Republic of' = 'Moldova',
+                          'Macedonia, the former Yugoslav Republic of' = 'Macedonia',
+                          "Korea, Democratic People's Republic of" = 'North Korea',
+                          'Syrian Arab Republic' = 'Syria',
+                          'Taiwan, Province of China' = 'Taiwan', 
+                          'Tanzania, United Republic of' = 'Tanzania',
+                          'United States of America' = 'USA',
+                          'Venezuela, Bolivarian Republic of' = 'Venezuela', 
+                          'Viet Nam' = 'Vietnam', 
+                          'Russian Federation' = 'Russia'))
+
+write.csv(final_df, './/output_tables/HTI_index_building_apr18.csv')
+```
+
+## Plotting 
+
+```{r fig.height=6.3}
+autoplot(prcomp(trafpresCor_pca_apr18), loadings = TRUE, loadings.label = TRUE) + 
+  ggtitle('PCA plot of eigenvectors',
+          subtitle = 'Human Trafficking Principal Component Index creation') + 
+  my.theme
+```
+
+```{r}
+map.world <- map_data("world")
+```
+
+
+```{r fig.height=8}
+HTCPI_var <- 'Transit Countries for Sex & Labor Trafficking (PC8)'
+col_name_HTCPI <- as.name(HTCPI_var)
+
+final_df_to_map <- final_df %>% 
+  #ungroup() %>% 
+  select_(1, 2, col_name_HTCPI) %>% 
+  filter(year == 2014 | 
+         year == 2015) %>% 
+  spread(year, 3) %>% 
+  mutate(HTI_var = ifelse(is.na(`2015`), `2014`, `2015`))
+
+joined.world.map <-left_join(x=map.world,
+                             y=final_df_to_map,
+                             by=c('region' = 'country'))
+
+joined.world.map %>% 
+  ggplot(.) +
+  geom_polygon(aes(x = long, y = lat, group = group, fill = HTI_var), color="gray60") +
+  scale_fill_continuous(low = "#CCCCCC", high = "#e60000") +
+  ggtitle(paste('Map of', col_name_HTCPI, 'Score'),
+          subtitle = '2015 estimates') + 
+  labs(caption = 'Using 2014 value if 2015 is NA') + 
+  map.theme + 
+  theme(plot.title = element_text(size=34))
+```
+
+## Sum coding and rank of sum coding  
+
+```{r fig.height=6.2}
+#test_country <- c('Portugal', 'China')
+
+pca_index_analysis_of_rank <- HTCdata_v2 %>% 
+  mutate(country_year = paste(country, year, sep="_")) %>% 
+  filter(!country_year %in% mult_CY_obs$country_year) %>% 
+  mutate(country = recode(country, 'Antigua and Barbuda' = 'Antigua',
+                          'Brunei Darussalam' = 'Brunei',
+                          "Côte d'Ivoire" = 'Ivory Coast',
+                          'Congo, the Democratic Republic of the' = 'Democratic Republic of the Congo',
+                          'Congo' = 'Republic of Congo',
+                          'Cabo Verde' = 'Cape Verde',
+                          'Curaçao' = 'Curacao',
+                          'Micronesia, Federated States of' = 'Micronesia',
+                          'United Kingdom' = 'UK',
+                          'Iran, Islamic Republic of' = 'Iran',
+                          'Korea, Republic of' = 'South Korea',
+                          "Lao People's Democratic Republic" = 'Laos',
+                          'Moldova, Republic of' = 'Moldova',
+                          'Macedonia, the former Yugoslav Republic of' = 'Macedonia',
+                          "Korea, Democratic People's Republic of" = 'North Korea',
+                          'Syrian Arab Republic' = 'Syria',
+                          'Taiwan, Province of China' = 'Taiwan', 
+                          'Tanzania, United Republic of' = 'Tanzania',
+                          'United States of America' = 'USA',
+                          'Venezuela, Bolivarian Republic of' = 'Venezuela', 
+                          'Viet Nam' = 'Vietnam', 
+                          'Russian Federation' = 'Russia')) %>% 
+  filter(year == 2015) %>% 
+  select(-country_year) %>% 
+  gather(var, val, 3:42) %>% 
+  group_by(country, year) %>% 
+  summarise(sum_val = sum(val, na.rm=TRUE)) %>% 
+  arrange(desc(sum_val)) %>% 
+  ungroup() %>% 
+  #min_rank() and dense_rank() should both be explored
+  #min_rank() allows for ties but gives gaps between ranking
+  #dense_rank() allows for ties but does not give gaps between rankings
+  mutate(rank_sum = ifelse(is.na(sum_val), NA, min_rank(desc(sum_val)))) %>% 
+  left_join(x=.,
+            y=final_df,
+            by=c('country' = 'country', 'year' = 'year')) %>% 
+  mutate(rank_HTCPI = ifelse(is.na(HTCPI), NA, min_rank(desc(HTCPI)))) %>% 
+  mutate(rank_difference = ifelse(is.na(rank_HTCPI), NA, rank_HTCPI - rank_sum)) %>% 
+  mutate(`Absolute value of rank difference` = abs(rank_difference), 
+         `Valence of rank difference` = ifelse(rank_difference >0, 'Positive', 
+                                        ifelse(rank_difference <0, 'Negative', 'Zero')))
+
+pca_index_analysis_of_rank_2 <- HTCdata_v2 %>% 
+  mutate(country_year = paste(country, year, sep="_")) %>% 
+  filter(!country_year %in% mult_CY_obs$country_year) %>% 
+  mutate(country = recode(country, 'Antigua and Barbuda' = 'Antigua',
+                          'Brunei Darussalam' = 'Brunei',
+                          "Côte d'Ivoire" = 'Ivory Coast',
+                          'Congo, the Democratic Republic of the' = 'Democratic Republic of the Congo',
+                          'Congo' = 'Republic of Congo',
+                          'Cabo Verde' = 'Cape Verde',
+                          'Curaçao' = 'Curacao',
+                          'Micronesia, Federated States of' = 'Micronesia',
+                          'United Kingdom' = 'UK',
+                          'Iran, Islamic Republic of' = 'Iran',
+                          'Korea, Republic of' = 'South Korea',
+                          "Lao People's Democratic Republic" = 'Laos',
+                          'Moldova, Republic of' = 'Moldova',
+                          'Macedonia, the former Yugoslav Republic of' = 'Macedonia',
+                          "Korea, Democratic People's Republic of" = 'North Korea',
+                          'Syrian Arab Republic' = 'Syria',
+                          'Taiwan, Province of China' = 'Taiwan', 
+                          'Tanzania, United Republic of' = 'Tanzania',
+                          'United States of America' = 'USA',
+                          'Venezuela, Bolivarian Republic of' = 'Venezuela', 
+                          'Viet Nam' = 'Vietnam', 
+                          'Russian Federation' = 'Russia')) %>% 
+  filter(year == 2014) %>% 
+  select(-country_year) %>% 
+  gather(var, val, 3:42) %>% 
+  group_by(country, year) %>% 
+  summarise(sum_val = sum(val, na.rm=TRUE)) %>% 
+  arrange(desc(sum_val)) %>% 
+  ungroup() %>% 
+  #min_rank() and dense_rank() should both be explored
+  #min_rank() allows for ties but gives gaps between ranking
+  #dense_rank() allows for ties but does not give gaps between rankings
+  mutate(rank_sum = ifelse(is.na(sum_val), NA, min_rank(desc(sum_val)))) %>% 
+  left_join(x=.,
+            y=final_df,
+            by=c('country' = 'country', 'year' = 'year')) %>% 
+  mutate(rank_HTCPI = ifelse(is.na(HTCPI), NA, min_rank(desc(HTCPI)))) %>% 
+  mutate(rank_difference = ifelse(is.na(rank_HTCPI), NA, rank_HTCPI - rank_sum)) %>% 
+  mutate(`Absolute value of rank difference` = abs(rank_difference), 
+         `Valence of rank difference` = ifelse(rank_difference >0, 'Positive', 
+                                        ifelse(rank_difference <0, 'Negative', 'Zero')))
+
+test_pca_index_analysis_of_rank <- rbind(pca_index_analysis_of_rank, pca_index_analysis_of_rank_2)
+```
+
+### Maps 
+
+```{r}
+colnames(test_pca_index_analysis_of_rank)
+```
+
+
+```{r fig.height=8}
+rank_var <- 'rank_difference'
+col_name_rank <- as.name(rank_var)
+
+final_df_to_map_rank <- test_pca_index_analysis_of_rank %>% 
+  #ungroup() %>% 
+  select_(1, 2, col_name_rank) %>% 
+  #filter(year == 2014 | 
+   #      year == 2015) %>% 
+  spread(year, 3) %>% 
+  mutate(rank_var = ifelse(is.na(`2015`), `2014`, `2015`))
+
+joined.world.map_rank <-left_join(x=map.world,
+                             y=final_df_to_map_rank,
+                             by=c('region' = 'country'))
+
+joined.world.map_rank %>% 
+  ggplot(.) +
+  geom_polygon(aes(x = long, y = lat, group = group, fill = rank_var), color="gray60") +
+  scale_fill_gradient2(low = "red", high = "blue", mid = "white") +
+  ggtitle('Map of Difference in Ranks: HTCPI minus HTI') + 
+  labs(caption = 'Using 2014 value if 2015 is NA') + 
+  map.theme + 
+  theme(plot.title = element_text(size=34))
+```
+
+### Scatterplots
+
+```{r fig.height=6.2}
+pca_index_analysis_of_rank %>% 
+  ggplot(.,
+         aes(x=rank_sum,
+             y=rank_HTCPI)) + 
+  geom_point() + 
+  geom_smooth(method='lm') + 
+  ggtitle('Correlation between HTCPI and HTI coding',
+          subtitle='Relationship between rankings') + 
+  labs(x='rank_HTI') + 
+  my.theme
+
+```
+
+```{r fig.height=6.2}
+pca_index_analysis_of_rank %>% 
+  ggplot(.,
+         aes(x=sum_val,
+             y=HTCPI)) + 
+  geom_point() + 
+  geom_smooth(method='lm') + 
+  ggtitle('Correlation between HTCPI and sum of HTI coding',
+          subtitle = 'Relationship between total scores') + 
+  labs(x='HTI') + 
+  my.theme
+```
+
+
+```{r fig.height=7}
+final_df_map_ranks <- pca_index_analysis_of_rank %>% 
+  mutate(country = recode(country, 'Antigua and Barbuda' = 'Antigua',
+                          'Brunei Darussalam' = 'Brunei',
+                          "Côte d'Ivoire" = 'Ivory Coast',
+                          'Congo, the Democratic Republic of the' = 'Democratic Republic of the Congo',
+                          'Congo' = 'Republic of Congo',
+                          'Cabo Verde' = 'Cape Verde',
+                          'Curaçao' = 'Curacao',
+                          'Micronesia, Federated States of' = 'Micronesia',
+                          'United Kingdom' = 'UK',
+                          'Iran, Islamic Republic of' = 'Iran',
+                          'Korea, Republic of' = 'South Korea',
+                          "Lao People's Democratic Republic" = 'Laos',
+                          'Moldova, Republic of' = 'Moldova',
+                          'Macedonia, the former Yugoslav Republic of' = 'Macedonia',
+                          "Korea, Democratic People's Republic of" = 'North Korea',
+                          'Syrian Arab Republic' = 'Syria',
+                          'Taiwan, Province of China' = 'Taiwan', 
+                          'Tanzania, United Republic of' = 'Tanzania',
+                          'United States of America' = 'USA',
+                          'Venezuela, Bolivarian Republic of' = 'Venezuela', 
+                          'Viet Nam' = 'Vietnam', 
+                          'Russian Federation' = 'Russia'))
+
+joined.world.map_ranks_comparison <-left_join(x=map.world,
+                             y=final_df_map_ranks,
+                             by=c('region' = 'country'))
+
+joined.world.map_ranks_comparison %>% 
+  ggplot(.) +
+  geom_polygon(aes(x = long, y = lat, group = group, fill = rank_difference), color="gray60") +
+  scale_fill_gradient2(low = "red", high = "blue", mid = "white") +
+  ggtitle('Map of Difference between rank of HTCPI less rank of sum of coding',
+          subtitle = '2015 estimates') + 
+  #labs(caption = 'Using 2014 value if 2015 is NA') + 
+  map.theme + 
+  theme(plot.title = element_text(size=23))
+```
+
+```{r fig.height=6.2}
+GGally::ggcorr(test_pca_index_analysis_of_rank %>% select(3:16), 
+               hjust=1.1, 
+               layout.exp=4, 
+               size=3, 
+               label_alpha=.3,
+               label = TRUE,
+               label_round = 2) + 
+  ggtitle('Correlation matrix of ranks in HTI vs. HTCPI') + 
+  theme(plot.title = element_text(hjust = .5, face="bold", size=22),
+        text = element_text(family = "Gill Sans MT"))
+```

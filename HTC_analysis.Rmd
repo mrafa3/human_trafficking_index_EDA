@@ -1,0 +1,1464 @@
+---
+title: "HTC Analysis"
+author: "Mickey Rafa"
+date: "FallQ 2016 - SpringQ 2017"
+output:
+  html_notebook:
+    toc: yes
+  html_document:
+    toc: yes
+    toc_depth: 3
+  pdf_document:
+    toc: yes
+    toc_depth: '3'
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(GGally) #for correlation matrix
+library(qgraph) #for cor_auto() function
+library(psych)  #for PCA
+library(extrafont) #for Gill Sans MT
+library(ggfortify)  #ggplots for PCA and clustering
+
+load(".//data/HTCrawtrafprev.Rda")
+load(".//data/trafprevComponents.Rda")
+HTCrawtrafprev <- HTCrawtrafprev %>% filter(year >= 2006) %>% arrange(year)
+```
+
+
+```{r my_theme, include=TRUE, echo=FALSE}
+my.theme <- theme(
+  plot.title = element_text(family="Gill Sans MT", color="black", face="bold", size=20, hjust=0), 
+  plot.subtitle = element_text(family="Gill Sans MT", color="black", size=15, hjust=0), 
+  axis.title = element_text(family="Gill Sans MT", color="black", face="bold", size=14), 
+  axis.text = element_text(family="Gill Sans MT", color="black", size=13), 
+  plot.caption = element_text(family="Gill Sans MT", color="black", size=13), 
+  panel.background = element_rect(fill = "#F7F7F7", colour = NA), 
+  panel.grid.major = element_line(colour = "grey90", size = 0.5),
+  panel.grid.minor = element_line(colour = "grey93", size = 0.5),
+  panel.border = element_rect(colour = "black", size = 0.5, fill=NA, linetype = 1),
+  legend.title = element_blank(), 
+  legend.text = element_text(family="Gill Sans MT", color="black", size=18, hjust=0),
+  legend.position = 'top',
+  strip.text = element_text(family="Gill Sans MT", color="black", face="bold", size=16),
+  strip.background = element_rect(fill = "white"))
+
+
+map.theme <- theme(text = element_text(family = "Gill Sans MT", color = "#FFFFFF"), 
+                   panel.background = element_rect(fill = "#444444"),
+                   plot.background = element_rect(fill = "#444444"),
+                   panel.grid = element_blank(),
+                   plot.title = element_text(size = 50),
+                   plot.subtitle = element_text(size = 25),
+                   plot.caption = element_text(size = 20), 
+                   axis.text = element_blank(),
+                   axis.title = element_blank(),
+                   axis.ticks = element_blank(),
+                   legend.position = "bottom", 
+                   legend.key.size = unit(1, "cm"),
+                   legend.background = element_rect(fill="#444444"),
+                   legend.title = element_blank())
+```
+
+
+# Executive Summary
+
+The Human Trafficking Center (HTC) coded 156 categorical variables from the U.S. Department of State's *Trafficking in Persons* Report (or "TIPs Report"). Each of these variables have been conceptualized as components of larger indices that capture different types of trafficking or government response to trafficking. "Trafficking Presence" (or **trafpres**) contains variables on the types of trafficking, such as labor, marriage, and sex trade, while "Government Response" (or **govrespons**) contains variables on the types of response to trafficking, such as legal protections or services provided to victims.  
+
+# Introduction  
+
+Human trafficking is inherently a difficult phenomenon to measure. Much like other types of illicit activity, such as organized crime, it is difficult to measure the magnitude of human trafficking because it is by its nature avoiding detection. Unlike organized crime, though, human trafficking can carry an added stigma on its victims that can even impede self-reporting.  
+
+While measuring the magnitude of these crimes across countries and time is problematic, the categorical measurement (or, the existence or absence of these crimes) is much more achievable and may lend itself better to research.  
+
+As such, the Human Trafficking Center (HTC) coded 156 categorical variables from the U.S. Department of State's *Trafficking in Persons* Report (or "TIPs Report"). To date, these variables have been coded for all countries from 2001 to 2015. These variables cannot be interpreted as measuring the magnitude or severity of trafficking, but rather the presence or absence of different types of trafficking across time. Each of these variables have been conceptualized as components of larger indices that capture different types of trafficking or government response to trafficking. "Trafficking Presence" (or **trafpres**) contains variables on the types of trafficking, such as labor, marriage, and sex trade, while "Government Response" (or **govrespons**) contains variables on the types of response to trafficking, such as legal protections or services provided to victims. A comprehensive list of the 156 component variables and how each map to **trafpres** or **govrespons** can be found in Appendix A.
+
+This phase of analysis is exploratory, but there are several questions that this report aims to address:  
+
+## Trafpres variables
+
+```{r HTCsumtrafpres, echo=TRUE}
+#Preview trafpres variables with summed trafpres index value calculated
+HTCrawtp <- mutate(HTCrawtrafprev, trafpresSUM=rowSums(cbind(HTCrawtrafprev[5:63]), na.rm=TRUE))  
+head(HTCrawtp)
+```
+
+The number of countries coded by year increases across time. In 2001, 83 countries were coded in the HTC dataset; for 2015, 202 countries were coded. This growth is important to bear in mind for historical analysis.
+
+```{r HTCCYcountplot, echo=TRUE, fig.height=6.2}
+aggdata <- aggregate(HTCrawtp$trafpresSUM ~ HTCrawtp$year, FUN=NROW)
+rect=data.frame(xmin=2010, xmax=2016, ymin=-Inf, ymax=Inf)
+CYcountplot <- ggplot(data=aggdata, aes(x=aggdata$`HTCrawtp$year`, 
+                                        y=aggdata$`HTCrawtp$trafpresSUM`)) + 
+                            xlim(2005, 2016) + 
+                            ggtitle("Total count of countries coded per year (2006-2015)", 
+                                    subtitle = 'Truncating data from 2001-2005') + 
+                            labs(x="Year", y="Count of Countries") + 
+                            theme(plot.title = element_text(color="#666666", face="bold", size=15, hjust=0)) + 
+                            theme(axis.title = element_text(color="#666666", face="bold", size=8)) + 
+                            geom_bar(stat="identity", fill="purple")
+CYcountplot + geom_rect(data=rect, aes(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax),
+                        color="grey20",
+                        alpha=0.1,
+                        inherit.aes=FALSE)
+```
+
+```{r HTCCYcountagg, echo=TRUE}
+aggdata
+```
+
+The summed values for all observations in a given year are visualized below. This shows that there is potentially a "reporting bias" at play -- there's clearly a very significant time component that may be driven by an increased intensity in reporting some of these types of trafficking since 2001. There's an article by Farris that describes this issue in human rights data and presents a latent variable approach as a solution. This approach should be evaluated to see if we can address this possible instrument bias.
+
+```{r HTCCYplot, echo=TRUE, fig.height=6.2}
+rect=data.frame(xmin=2010, xmax=2016, ymin=-Inf, ymax=Inf)
+CYcountplot.tp <- ggplot(data=HTCrawtp, aes(x=HTCrawtp$year, y=HTCrawtp$trafpresSUM)) + 
+                            xlim(2005, 2016) + 
+                            ggtitle("Sum of coded trafpres variables (2006-2015)", 
+                                    subtitle = 'Truncating data from 2001-2005') + 
+                            labs(x="Year", y="Count of CY observations") + 
+                            theme(plot.title = element_text(color="#666666", face="bold", size=15, hjust=0)) + 
+                            theme(axis.title = element_text(color="#666666", face="bold", size=8)) + 
+                            geom_bar(stat="identity", fill="blue")
+CYcountplot.tp + geom_rect(data=rect, aes(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax),
+                        color="grey20",
+                        alpha=0.1,
+                        inherit.aes=FALSE)
+```
+
+There is greater stability from 2011-2015 (though there is still growth). For the regression modeling in later sections, I utilize this 2011-2015 period of data for model building.
+
+```{r HTCrawtpYcount, echo=TRUE}
+aggregate(HTCrawtp$trafpresSUM ~ HTCrawtp$year, FUN=sum)
+```
+
+## Correlation Analysis of **trafpres** Component Variables
+
+The default setting of the `cor_auto()` function is to produce a Pearson's correlation matrix. However, if this function is fed binary or ordinal data, it will produce the polychoric correlation matrix. Given that our raw component data is comprised of binary data, a polychoric correlation matrix is required. 
+
+```{r polychorcorrelation, echo=TRUE}
+#Build polychoric correlation matrix
+trafpresCor <- qgraph::cor_auto(trafprevComponents, detectOrdinal = TRUE, 
+                        forcePD = FALSE)
+```
+
+```{r correlation, echo=TRUE, fig.height=6.2}
+#Show correlation matrix of off trafpres component variables
+GGally::ggcorr(trafpresCor, hjust=1.1, layout.exp=10, size=2, label_alpha=.3)
+```
+
+This bird's eye view illustrates that there are some variables of these 59 **trafpres** components that are highly correlated with one another. These coefficients could be used in confirmatory factor analysis (CFA) to determine whether the theorized indices within the dataset seem to cluster. Before experimenting with CFA, we'll experiment with principal components analysis (PCA) as a dimension reduction and index building technique.
+
+These data are complex to analyze together. Some variables, such as **pimp_trafficker** are very commonly coded (1,833), while other variables, like **sex_mainlyboys** are rarely used (only 6 times total in the dataset). With a dataset this unbalanced, PCA will artificially use the uncommon variables to find orthoganals. 
+
+
+```{r cluster_prepare, include=TRUE}
+HTCdata <- read.csv(".//data/HTC Country year coding and indices v3.0.csv")
+HTCdata <- HTCdata[,c(2,4:63)]
+HTCdata <- HTCdata %>% filter(year >= 2006)
+```
+
+```{r view_uncommon_variables, include=TRUE, echo=FALSE}
+HTCdata %>% 
+  gather(variable, value, 3:61) %>% 
+  group_by(variable) %>% 
+  summarise(`Number of Occurrences` = sum(value)) %>% 
+  arrange(`Number of Occurrences`) %>% 
+  filter(`Number of Occurrences` < 100) 
+```
+
+**Insert heat map of year and variable summed coding. How frequently are variables used? Are some not used consistently across time? This doesn't need to be fully analyzed, but a view of this would be helpful.**
+
+```{r vars_less_than_100, include=TRUE}
+vars_greater_than_100 <- HTCdata %>% 
+  gather(variable, value, 3:61) %>% 
+  group_by(variable) %>% 
+  summarise(sum_value = sum(value)) %>% 
+  arrange(sum_value) %>% 
+  filter(sum_value > 100) %>% 
+  select(variable) %>% 
+  unique()
+
+HTCdata_v2 <- HTCdata %>% 
+  group_by(country, year) %>% 
+  select(c(vars_greater_than_100$variable)) %>% 
+  ungroup()
+```
+
+The following network plots are exploratory and serve to evaluate the relationships between these variables in a different way. Each of the network plots is a subset of the **trafpres** variables with their logical groupings, as a way to explore whether the groups of variables seem to be getting at the same latent variable.
+
+# Analysis of Variables
+
+## Principal Components Analysis (PCA) testing - April 2017
+
+Principal Components Analysis can be used to trim the component variables of the HTC indices into a more parsimonious set of variables that explain the total variation in the respective index. This section will illustrate that dimension reduction is possible on the **trafprev** component variables.
+
+The first step in PCA is to produce a scree plot. This step tests the data to see how many principal components might be present in the data (or, put another way, how many principal components are necessary to maximize the explained variance in the data).  PCA can help us trim the redundancy out of the dataset to reach a more parsimonious set of principal components.
+
+### All variables  
+
+
+```{r all_vars_polychoric, include=TRUE}
+#Build polychoric correlation matrix
+all_vars_polychoric <- qgraph::cor_auto(trafprevComponents, detectOrdinal = TRUE, forcePD = FALSE)
+```
+
+```{r KMO_test, include=FALSE}
+#should look into this more closely
+KMO(trafprevComponents)
+cortest.bartlett(trafprevComponents)
+```
+
+
+```{r all_vars_pca_scree, include=TRUE, fig.height=6.2}
+#Produce scree plot of PCA results and identify PCs > 1
+all_vars_pca_scree <- fa.parallel(all_vars_polychoric, fa="pc", n.iter=100, show.legend = TRUE, 
+                       main="Scree Plot of Principal Components for All variables")
+abline(h=1)
+```
+
+
+```{r all_vars_pca_kaiser, echo=TRUE}
+#Show PCA results
+all_vars_pca_kaiser <- principal(all_vars_polychoric, nfactors=17, rotate="varimax", scores = TRUE)
+all_vars_pca_kaiser[[5]]
+```
+
+
+```{r all_vars_pca_scree_test, echo=TRUE}
+#Show PCA results
+#based on the scree plot, you could make the case for a 7 factor solution (one point left of the elbow)
+all_vars_pca_scree_test <- principal(all_vars_polychoric, nfactors=7, rotate="varimax", scores = TRUE)
+all_vars_pca_scree_test[[5]]
+```
+
+```{r all_vars_pca_scree_test_2, echo=TRUE}
+#Show PCA results
+#more conservative interpretation of scree plot
+#you could make the case for a 4 factor solution (one point left of the elbow)
+all_vars_pca_scree_test_2 <- principal(all_vars_polychoric, nfactors=4, rotate="varimax", scores = TRUE)
+all_vars_pca_scree_test_2[[5]]
+```
+
+### Origin, Transit, & Destination Variables
+
+First, I'll start by only including the origin, transit, and destination variables.
+
+```{r polychorcorrelation2, echo=TRUE}
+#Build polychoric correlation matrix
+trafpresCor_pca <- qgraph::cor_auto(trafprevComponents[,c('O_labor', 'O_childlabor', 'O_sex', 'O_cstourism', 'O_domestic', 'O_begging', 'T_labor', 'T_childlabor', 'T_sex', 'T_childsex', 'T_cstourism', 'T_domestic', 'T_begging', 'D_labor', 'D_childlabor', 'D_sex', 'D_cstourism', 'D_domestic', 'D_begging')], detectOrdinal = TRUE, forcePD = FALSE)
+
+```
+
+```{r screeplot1, echo=FALSE, fig.height=6.2, warning=FALSE}
+#Produce scree plot of PCA results and identify PCs > 1
+PCAscree <- fa.parallel(trafpresCor_pca, fa="pc", n.iter=100, show.legend = TRUE, 
+                       main="Scree Plot of Principal Components for Origin, Transit, & Destination trafpres variables")
+abline(h=1)
+```
+
+
+Based on the initial scree plot of the **trafprev** component variables, 6 principal components have Eigenvalues that exceed 1 (the typical cut-off point for factor retention).
+
+The number of components selected is a subjective process. It's possible that a four-component structure could produce four groupings of the variables that make sense and explain enough of the variance in the data. For instance, we could find that the *origin*, *destination*, *trafficker*, and *marriage* variables cluster together, which could mean that there is redundancy in retaining each of those variables. However, given the results of the scree plot, which show roughly 6 components with Eigenvalues greater than one, it is probable that variables will not group neatly into conceptually-relevant categories.
+
+Based on the results of the scree plot, I will set this PCA demonstration to 6 components.
+
+```{r PCAtest1, echo=FALSE}
+#Show PCA results
+PCAtest1 <- principal(trafpresCor_pca, nfactors=6, rotate="varimax", scores = TRUE)
+PCAtest1[[5]]
+```
+
+### Traffickers, targets, and types  
+
+```{r polychorcorrelation3, echo=TRUE}
+#Build polychoric correlation matrix
+trafpresCor_pca2 <- qgraph::cor_auto(trafprevComponents[,c('O_labor', 'O_sex', 'T_labor', 'T_sex', 'D_labor', 'D_sex', 'labor_men', 'labor_women', 'sex_women', 'sex_men', 'fam_trafficker', 'teac_trafficker', 'dipl_trafficker', 'brok_trafficker', 'empl_trafficker', 'bus_trafficker', 'crim_trafficker', 'militia_trafficker', 'govt_trafficker', 'rel_trafficker', 'pimp_trafficker')], detectOrdinal = TRUE, forcePD = FALSE)
+```
+
+```{r screeplot2, echo=FALSE, fig.height=6.2}
+#Produce scree plot of PCA results and identify PCs > 1
+PCAscree2 <- fa.parallel(trafpresCor_pca2, fa="pc", n.iter=100, show.legend = TRUE, 
+                       main="Scree Plot of Principal Components for Origin, Transit, & Destination trafpres variables")
+abline(h=1)
+```
+
+The scree test would suggest 4 factors is appropriate
+
+```{r PCAtest2, echo=FALSE}
+#Show PCA results
+PCAtest2 <- principal(trafpresCor_pca2, nfactors=8, rotate="varimax", 
+                      residuals = TRUE, scores = TRUE)
+PCAtest2[[5]]
+```
+
+```{r}
+new_HTCdata <- 
+HTCdata %>% 
+  mutate(business_and_labor_index = D_labor * .23 + labor_men * .31 + labor_women * .32 + bus_trafficker * .14,
+       origin_index = O_labor * .42 + O_sex * .58,
+       pimps_sex_trafficking_index = D_sex * .24 + sex_women * .28 + pimp_trafficker * .48,
+       religious_teacher_trafficker_index = rel_trafficker * .47 + teac_trafficker * .53,
+       transit_index = T_labor * .48 + T_sex * .52,
+       broker_criminal_trafficker_index = crim_trafficker * .26 + fam_trafficker * .3 + brok_trafficker * .44,
+       govt_militia_trafficker_index = militia_trafficker * .62 + govt_trafficker * .38,
+       diplomat_sex_w_men_index = sex_men * .67 + dipl_trafficker * .33)
+
+
+
+```
+
+```{r}
+regions <- read.csv('.//data/pardee_trends_groups.csv')
+```
+
+```{r fig.height=7}
+new_HTCdata <- new_HTCdata %>% 
+  left_join(x=.,
+            y=regions %>% filter(main_group == 'Pardee Group'),
+            by=c('country' = 'Country'))
+
+new_HTCdata$year <- as.numeric(new_HTCdata$year)
+```
+
+
+## Principal Components Analysis (PCA) update - March 2018
+
+### Traffickers, targets, and types  
+
+```{r polychorcorrelation_mar18, echo=TRUE}
+#Build polychoric correlation matrix
+vars_pca_mar18 <- c('O_labor', 'O_sex', 'T_labor', 'T_sex', 'D_labor', 'D_sex', 'labor_men', 
+                    'labor_women', 'sex_women', 'fam_trafficker', 'teac_trafficker', 
+                    'empl_trafficker', 'bus_trafficker', 'crim_trafficker', 'militia_trafficker', 
+                    'govt_trafficker', 'pimp_trafficker')
+
+trafpresCor_pca_mar18 <- qgraph::cor_auto(HTCdata_v2 %>% select(vars_pca_mar18), 
+                                          detectOrdinal = TRUE, forcePD = FALSE)
+```
+
+```{r screeplot_mar18, echo=FALSE, fig.height=6.2}
+#Produce scree plot of PCA results and identify PCs > 1
+PCAscree_mar18 <- fa.parallel(trafpresCor_pca_mar18, fa="pc", n.iter=100, show.legend = TRUE, 
+                       main="Scree Plot of Principal Components for Origin, Transit, & Destination trafpres variables")
+abline(h=1)
+```
+
+
+```{r PCAtest_mar18, echo=FALSE}
+#Show PCA results
+PCAtest_mar18 <- principal(trafpresCor_pca_mar18, nfactors=6, rotate="varimax", 
+                      residuals = TRUE, scores = TRUE)
+PCAtest_mar18[[5]]
+```
+
+```{r fig.height=6.2}
+autoplot(prcomp(trafpresCor_pca_mar18), loadings = TRUE, loadings.label = TRUE) + 
+  my.theme
+```
+
+
+
+```{r polychorcorrelation_mar18_2, echo=TRUE}
+#Build polychoric correlation matrix
+vars_pca_mar18_2 <- c('O_labor', 'O_sex', 'T_labor', 'T_sex', 'D_labor', 'D_sex', 'labor_men', 
+                    'labor_women', 'sex_women', 'fam_trafficker', 'teac_trafficker', 
+                    'bus_trafficker', 'crim_trafficker', 'militia_trafficker', 
+                    'govt_trafficker', 'pimp_trafficker')
+
+trafpresCor_pca_mar18_2 <- qgraph::cor_auto(HTCdata_v2 %>% select(vars_pca_mar18_2), 
+                                          detectOrdinal = TRUE, forcePD = FALSE)
+```
+
+```{r screeplot_mar18_2, echo=FALSE, fig.height=6.2}
+#Produce scree plot of PCA results and identify PCs > 1
+PCAscree_mar18_2 <- fa.parallel(trafpresCor_pca_mar18_2, fa="pc", n.iter=100, show.legend = TRUE, 
+                       main="Scree Plot of Principal Components for Origin, Transit, & Destination trafpres variables")
+abline(h=1)
+```
+
+```{r fig.height=6.2}
+pca_scree_vals <- data.frame(PCAscree_mar18_2$pc.values) %>% 
+  rename(eigenvalues = PCAscree_mar18_2.pc.values) %>% 
+  mutate(component_number = seq.int(1, 16, 1))
+
+pca_scree_vals %>% 
+  ggplot(., aes(x=component_number, 
+                y=eigenvalues)) + 
+  geom_point(size=2) + 
+  geom_line(size=1) + 
+  geom_hline(yintercept = 1, linetype = 'dashed', lwd=1, color='red') + 
+  my.theme
+```
+
+
+
+```{r PCAtest_mar18_2, echo=FALSE}
+#Show PCA results
+PCAtest_mar18_2 <- principal(trafpresCor_pca_mar18_2, nfactors=6, rotate="varimax", 
+                      residuals = TRUE, scores = TRUE)
+PCAtest_mar18_2
+```
+
+```{r fig.height=6.2}
+autoplot(prcomp(trafpresCor_pca_mar18_2), loadings = TRUE, loadings.label = TRUE) + 
+  my.theme
+```
+
+## Sum coding and rank of sum coding  
+
+```{r mult_CY_obs, include=TRUE, echo=TRUE}
+#identifying and removing multiple CY observations
+mult_CY_obs <- HTCdata_v2 %>% 
+  group_by(country, year) %>% 
+  summarise(count = n()) %>% 
+  arrange(desc(count)) %>% 
+  mutate(country_year = paste(country, year, sep="_")) %>% 
+  filter(count > 1) %>% 
+  ungroup() %>% 
+  select(country_year)
+```
+
+
+```{r}
+HTCdata_index_mar18 <- HTCdata_v2 %>% 
+  mutate(country_year = paste(country, year, sep="_")) %>% 
+  filter(!country_year %in% mult_CY_obs$country_year) %>% 
+  #select(index_coeff_simple_mar18$variable) %>% 
+  gather(variable, value, 3:42) %>% 
+  full_join(x=.,
+            y=index_coeff_mar18,
+            by='variable') %>% 
+  mutate(index_value_stage1 = value * coeff) %>% 
+  group_by(country, year, country_year, component) %>% 
+  summarise(sub_index = sum(index_value_stage1, na.rm = TRUE)) %>% 
+  full_join(x=.,
+            y=ss_loadings_mar18,
+            by='component') %>% 
+  filter(!is.na(component)) %>% 
+  mutate(HTI_subindex_score = sub_index * value,
+         sub_index_name = ifelse(component == 'RC1', 'Internal Forced Child Labor Trafficking (PC1)',
+                          ifelse(component == 'RC2', 'General Labor Trafficking (PC2)',
+                          ifelse(component == 'RC3', 'Countries of Origin for Child Trafficking (PC3)',
+                          ifelse(component == 'RC5', 'Internal Sex Trafficking (PC5)',
+                          ifelse(component == 'RC6', 'Domestic Servitude Trafficking (PC6)',
+                          ifelse(component == 'RC7', 'Forced Marriage Trafficking (PC7)',
+                          ifelse(component == 'RC8', 'Transit Countries for Sex & Labor Trafficking (PC8)',
+                          ifelse(component == 'RC9', 'Militia-related Trafficking (PC9)', 
+                          ifelse(component == 'RC10', 'Destination of Child Trafficking (PC10)',
+                                                      'Destination of Child Sex Tourism Trafficking (PC11)')))))))))) %>% 
+  ungroup()
+
+HTCdata_subindices_df <- HTCdata_index_mar18 %>% 
+  select(1:2, 8:9) %>% 
+  filter(year == 2015 | 
+         year == 2014 | 
+         year == 2013) %>% 
+  spread(sub_index_name, HTI_subindex_score)
+
+HTCdata_totalindex_mar18 <- HTCdata_index_mar18 %>% 
+  group_by(country, year) %>% 
+  summarise(HTCPI = sum(HTI_subindex_score, na.rm = TRUE))
+
+final_df <- HTCdata_totalindex_mar18 %>% 
+  filter(year == 2015 | 
+         year == 2014 | 
+         year == 2013) %>% 
+  left_join(x=.,
+            y=HTCdata_subindices_df,
+            by=c('country', 'year')) %>% 
+  ungroup() %>% 
+  mutate(country = recode(country, 'Antigua and Barbuda' = 'Antigua',
+                          'Brunei Darussalam' = 'Brunei',
+                          "Côte d'Ivoire" = 'Ivory Coast',
+                          'Congo, the Democratic Republic of the' = 'Democratic Republic of the Congo',
+                          'Congo' = 'Republic of Congo',
+                          'Cabo Verde' = 'Cape Verde',
+                          'Curaçao' = 'Curacao',
+                          'Micronesia, Federated States of' = 'Micronesia',
+                          'United Kingdom' = 'UK',
+                          'Iran, Islamic Republic of' = 'Iran',
+                          'Korea, Republic of' = 'South Korea',
+                          "Lao People's Democratic Republic" = 'Laos',
+                          'Moldova, Republic of' = 'Moldova',
+                          'Macedonia, the former Yugoslav Republic of' = 'Macedonia',
+                          "Korea, Democratic People's Republic of" = 'North Korea',
+                          'Syrian Arab Republic' = 'Syria',
+                          'Taiwan, Province of China' = 'Taiwan', 
+                          'Tanzania, United Republic of' = 'Tanzania',
+                          'United States of America' = 'USA',
+                          'Venezuela, Bolivarian Republic of' = 'Venezuela', 
+                          'Viet Nam' = 'Vietnam', 
+                          'Russian Federation' = 'Russia'))
+
+
+write.csv(final_df, './/output_tables/HTI_index_building_apr18.csv')
+```
+
+```{r fig.height=6.2}
+#test_country <- c('Portugal', 'China')
+
+pca_index_analysis_of_rank <- HTCdata_v2 %>% 
+  mutate(country_year = paste(country, year, sep="_")) %>% 
+  filter(!country_year %in% mult_CY_obs$country_year) %>% 
+  filter(year == 2015) %>% 
+  select(-country_year) %>% 
+  gather(var, val, 3:42) %>% 
+  group_by(country, year) %>% 
+  summarise(sum_val = sum(val, na.rm=TRUE)) %>% 
+  arrange(desc(sum_val)) %>% 
+  ungroup() %>% 
+  #min_rank() and dense_rank() should both be explored
+  #min_rank() allows for ties but gives gaps between ranking
+  #dense_rank() allows for ties but does not give gaps between rankings
+  mutate(rank_sum = min_rank(desc(sum_val))) %>% 
+  left_join(x=.,
+            y=final_df,
+            by=c('country' = 'country', 'year' = 'year')) %>% 
+  mutate(rank_HTI_total_index = min_rank(desc(HTI_total_index))) %>% 
+  mutate(rank_difference = rank_HTI_total_index - rank_sum) %>% 
+  mutate(`Absolute value of rank difference` = abs(rank_difference), 
+         `Valence of rank difference` = ifelse(rank_difference >0, 'Positive', 
+                                        ifelse(rank_difference <0, 'Negative', 'Zero')))
+```
+
+```{r fig.height=6.2}
+pca_index_analysis_of_rank %>% 
+  ggplot(.,
+         aes(x=rank_sum,
+                 y=rank_HTI_total_index)) + 
+  geom_point() + 
+  geom_smooth(method='lm') + 
+  ggtitle('Correlation between rank of HTCPI and sum of HTI coding') + 
+  my.theme
+```
+
+```{r fig.height=6.2}
+pca_index_analysis_of_rank %>% 
+  ggplot(.,
+         aes(x=sum_val,
+                 y=HTI_total_index)) + 
+  geom_point() + 
+  geom_smooth(method='lm') + 
+  ggtitle('Correlation between HTCPI and sum of HTI coding') + 
+  my.theme
+```
+
+```{r fig.height=7}
+final_df_map_ranks <- pca_index_analysis_of_rank %>% 
+  mutate(country = recode(country, 'Antigua and Barbuda' = 'Antigua',
+                          'Brunei Darussalam' = 'Brunei',
+                          "Côte d'Ivoire" = 'Ivory Coast',
+                          'Congo, the Democratic Republic of the' = 'Democratic Republic of the Congo',
+                          'Congo' = 'Republic of Congo',
+                          'Cabo Verde' = 'Cape Verde',
+                          'Curaçao' = 'Curacao',
+                          'Micronesia, Federated States of' = 'Micronesia',
+                          'United Kingdom' = 'UK',
+                          'Iran, Islamic Republic of' = 'Iran',
+                          'Korea, Republic of' = 'South Korea',
+                          "Lao People's Democratic Republic" = 'Laos',
+                          'Moldova, Republic of' = 'Moldova',
+                          'Macedonia, the former Yugoslav Republic of' = 'Macedonia',
+                          "Korea, Democratic People's Republic of" = 'North Korea',
+                          'Syrian Arab Republic' = 'Syria',
+                          'Taiwan, Province of China' = 'Taiwan', 
+                          'Tanzania, United Republic of' = 'Tanzania',
+                          'United States of America' = 'USA',
+                          'Venezuela, Bolivarian Republic of' = 'Venezuela', 
+                          'Viet Nam' = 'Vietnam', 
+                          'Russian Federation' = 'Russia'))
+
+joined.world.map_ranks_comparison <-left_join(x=map.world,
+                             y=final_df_map_ranks,
+                             by=c('region' = 'country'))
+
+joined.world.map_ranks_comparison %>% 
+  ggplot(.) +
+  geom_polygon(aes(x = long, y = lat, group = group, fill = rank_difference), color="gray60") +
+  scale_fill_gradient2(low = "red", high = "blue", mid = "white") +
+  ggtitle('Map of Difference between rank of HTCPI less rank of sum of coding',
+          subtitle = '2015 estimates') + 
+  #labs(caption = 'Using 2014 value if 2015 is NA') + 
+  map.theme + 
+  theme(plot.title = element_text(size=23))
+```
+
+```{r fig.height=6.2}
+GGally::ggcorr(pca_index_analysis_of_rank %>% select(3:16), 
+               hjust=1.1, 
+               layout.exp=4, 
+               size=3, 
+               label_alpha=.3,
+               label = TRUE,
+               label_round = 2) + 
+  ggtitle('Correlation matrix of ranks in sum coding vs. HTCPI') + 
+  theme(plot.title = element_text(hjust = .5, face="bold", size=22),
+        text = element_text(family = "Gill Sans MT"))
+```
+
+
+## Fit all vars for sub-indices and total HTI
+
+```{r polychorcorrelation_mar18_3, echo=TRUE}
+#Build polychoric correlation matrix
+#ALL VARS
+
+trafpresCor_pca_mar18_3 <- qgraph::cor_auto(HTCdata_v2 %>% select(3:42), 
+                                          detectOrdinal = TRUE, forcePD = FALSE)
+```
+
+```{r screeplot_mar18_3, echo=FALSE, fig.height=6.2}
+#Produce scree plot of PCA results and identify PCs > 1
+PCAscree_mar18_3 <- fa.parallel(trafpresCor_pca_mar18_3, fa="pc", n.iter=100, show.legend = TRUE, 
+                       main="Scree Plot of Principal Components for Origin, Transit, & Destination trafpres variables")
+abline(h=1)
+```
+
+
+```{r}
+GGally::ggcorr(trafpresCor_pca_mar18_3, hjust=1.1, layout.exp=4, size=2, label_alpha=.3) + 
+  theme(text = element_text(family = "Gill Sans MT"))
+```
+
+
+```{r PCAtest_mar18_3, echo=FALSE}
+#Show PCA results
+PCAtest_mar18_3 <- principal(trafpresCor_pca_mar18_3, nfactors=11, rotate="varimax", 
+                      residuals = TRUE, scores = TRUE)
+PCAtest_mar18_3
+```
+
+```{r fig.height=6.2}
+pca_scree_vals <- data.frame(PCAscree_mar18_3$pc.values) %>% 
+  rename(eigenvalues = PCAscree_mar18_3.pc.values) %>% 
+  mutate(component_number = seq.int(1, 40, 1))
+
+pca_scree_vals %>% 
+  ggplot(., aes(x=component_number, 
+                y=eigenvalues)) + 
+  geom_point(size=2) + 
+  geom_line(size=1) + 
+  ggtitle('Scree plot of eigenvalues of principal components',
+          subtitle = 'Total Human Trafficking Principal Component Index dataset') + 
+  geom_hline(yintercept = 1, linetype = 'dashed', lwd=1, color='red') + 
+  my.theme
+```
+
+
+## Index building 
+
+```{r load_index_coeff, include=TRUE, echo=TRUE}
+index_coeff_mar18 <- readxl::read_xlsx('index_building_mar18.xlsx', sheet = 'coeff') %>% 
+  gather(component, coeff, 2:12) %>% 
+  filter(!is.na(coeff),
+         component != 'RC4')
+
+ss_loadings_mar18 <- readxl::read_xlsx('index_building_mar18.xlsx', sheet = 'ss_loadings') %>% 
+  gather(component, value, 2:12) %>% 
+  filter(var == 'SS loadings',
+         component != 'RC4')
+
+index_coeff_simple_mar18 <- readxl::read_xlsx('index_building_mar18.xlsx', sheet = 'coeff_simple')
+```
+
+
+
+
+
+```{r}
+#what are the NA values in the HTI index?
+#HTCdata_index_mar18 %>% 
+ # filter(country == 'Poland')
+
+HTCdata %>% 
+  filter(country == 'South Africa')
+
+#countries with NA are those with multiple CY observations
+#do we need to treat those differently?
+```
+
+
+
+```{r}
+#what's going on with Japan in 2008?
+HTCdata_index_mar18 %>% 
+  ungroup() %>% 
+  filter(country_year == 'Japan_2008') %>% 
+  select(3, 8:9)
+```
+
+
+
+```{r}
+#is there a child militia mention for Japan in 2008?
+HTCdata_v2 %>% 
+  filter(country == 'Japan',
+         year == '2008') %>% 
+  select(country, year, contains('militi', ignore.case = TRUE))
+```
+
+### Plotting 
+
+```{r fig.height=6.3}
+autoplot(prcomp(trafpresCor_pca_mar18_3), loadings = TRUE, loadings.label = TRUE) + 
+  ggtitle('PCA plot of eigenvectors',
+          subtitle = 'Human Trafficking Principal Component Index creation') + 
+  my.theme
+
+```
+
+```{r}
+test <- HTCdata_totalindex_mar18 %>% 
+  spread(year, HTI_total_index)
+```
+
+
+```{r fig.height=8}
+HTI_var <- 'HTI_total_index'
+col_name <- as.name(HTI_var)
+
+
+final_df_to_map <- final_df %>% 
+  ungroup() %>% 
+    mutate(country = ifelse(country == 'Antigua and Barbuda', 'Antigua',
+                   ifelse(country == 'Brunei Darussalam', 'Brunei',
+                   ifelse(country == "Côte d'Ivoire", 'Ivory Coast',
+                   ifelse(country == 'Congo, the Democratic Republic of the', 'Democratic Republic of the Congo',
+                   ifelse(country == 'Congo', 'Republic of Congo',
+                   ifelse(country == 'Cabo Verde', 'Cape Verde',
+                   ifelse(country == 'Curaçao', 'Curacao',
+                   ifelse(country == 'Micronesia, Federated States of', 'Micronesia',
+                   ifelse(country == 'United Kingdom', 'UK',
+                   ifelse(country == 'Iran, Islamic Republic of', 'Iran',
+                   ifelse(country == 'Korea, Republic of', 'South Korea',
+                   ifelse(country == "Lao People's Democratic Republic", 'Laos',
+                   ifelse(country == 'Moldova, Republic of', 'Moldova',
+                   ifelse(country == 'Macedonia, the former Yugoslav Republic of', 'Macedonia',
+                   ifelse(country == "Korea, Democratic People's Republic of", 'North Korea',
+                   ifelse(country == 'Syrian Arab Republic', 'Syria',
+                   ifelse(country == 'Taiwan, Province of China', 'Taiwan', 
+                   ifelse(country == 'Tanzania, United Republic of', 'Tanzania',
+                   ifelse(country == 'United States of America', 'USA',
+                   ifelse(country == 'Venezuela, Bolivarian Republic of', 'Venezuela', 
+                   ifelse(country == 'Viet Nam', 'Vietnam', 
+                   ifelse(country == 'Russian Federation', 'Russia', as.character(country)))))))))))))))))))))))) %>% 
+  select_(1, 2, col_name) %>% 
+  filter(year == 2014 | 
+         year == 2015) %>% 
+  spread(year, 3) %>% 
+  mutate(HTI_var = ifelse(is.na(`2015`), `2014`, `2015`))
+
+joined.world.map_2 <-left_join(x=map.world,
+                             y=final_df_to_map,
+                             by=c('region' = 'country'))
+
+joined.world.map_2 %>% 
+  ggplot(.) +
+  geom_polygon(aes(x = long, y = lat, group = group, fill = HTI_var)) +
+  scale_fill_continuous(low = "#CCCCCC", high = "#e60000") +
+  ggtitle('Map of HTI Composite Score',
+          subtitle = '2015 estimates') + 
+  labs(caption = 'Using 2014 value if 2015 is NA') + 
+  map.theme
+
+
+```
+
+
+
+```{r fig.height=8}
+map.world <- map_data("world")
+
+
+join_test <- anti_join(x=map.world,
+          y=final_df_2,
+          by=c('region' = 'country')) %>% 
+  select(region) %>% 
+  distinct()
+
+final_df_2 <- final_df %>% 
+  ungroup() %>% 
+  select(1:3) %>% 
+  spread(year, HTI_total_index) %>% 
+  mutate(HTI_total_index = ifelse(is.na(`2015`), `2014`, `2015`)) %>% 
+  select(1, 5) %>% 
+  mutate(country = ifelse(country == 'Antigua and Barbuda', 'Antigua',
+                   ifelse(country == 'Brunei Darussalam', 'Brunei',
+                   ifelse(country == "Côte d'Ivoire", 'Ivory Coast',
+                   ifelse(country == 'Congo, the Democratic Republic of the', 'Democratic Republic of the Congo',
+                   ifelse(country == 'Congo', 'Republic of Congo',
+                   ifelse(country == 'Cabo Verde', 'Cape Verde',
+                   ifelse(country == 'Curaçao', 'Curacao',
+                   ifelse(country == 'Micronesia, Federated States of', 'Micronesia',
+                   ifelse(country == 'United Kingdom', 'UK',
+                   ifelse(country == 'Iran, Islamic Republic of', 'Iran',
+                   ifelse(country == 'Korea, Republic of', 'South Korea',
+                   ifelse(country == "Lao People's Democratic Republic", 'Laos',
+                   ifelse(country == 'Moldova, Republic of', 'Moldova',
+                   ifelse(country == 'Macedonia, the former Yugoslav Republic of', 'Macedonia',
+                   ifelse(country == "Korea, Democratic People's Republic of", 'North Korea',
+                   ifelse(country == 'Syrian Arab Republic', 'Syria',
+                   ifelse(country == 'Taiwan, Province of China', 'Taiwan', 
+                   ifelse(country == 'Tanzania, United Republic of', 'Tanzania',
+                   ifelse(country == 'United States of America', 'USA',
+                   ifelse(country == 'Venezuela, Bolivarian Republic of', 'Venezuela', 
+                   ifelse(country == 'Viet Nam', 'Vietnam', 
+                   ifelse(country == 'Russian Federation', 'Russia', as.character(country))))))))))))))))))))))))
+
+joined.world.map <-left_join(x=map.world,
+                             y=final_df_2,
+                             by=c('region' = 'country'))
+
+joined.world.map %>% 
+  ggplot(.) +
+  geom_polygon(aes(x = long, y = lat, group = group, fill = HTI_total_index), color="gray60") +
+  scale_fill_continuous(low = "#CCCCCC", high = "#e60000") +
+  ggtitle('Map of HTPCI Score',
+          subtitle = '2015 estimates') + 
+  labs(caption = 'Using 2014 value if 2015 is NA') + 
+  map.theme
+
+
+
+final_df_3 <- final_df %>% 
+  ungroup() %>% 
+  select(1:2, `Forced Marriage Trafficking`) %>% 
+  spread(year, `Forced Marriage Trafficking`) %>% 
+  mutate(`Forced Marriage Trafficking` = ifelse(is.na(`2015`), `2014`, `2015`)) %>% 
+  select(1, 5) %>% 
+  mutate(country = ifelse(country == 'Antigua and Barbuda', 'Antigua',
+                   ifelse(country == 'Brunei Darussalam', 'Brunei',
+                   ifelse(country == "Côte d'Ivoire", 'Ivory Coast',
+                   ifelse(country == 'Congo, the Democratic Republic of the', 'Democratic Republic of the Congo',
+                   ifelse(country == 'Congo', 'Republic of Congo',
+                   ifelse(country == 'Cabo Verde', 'Cape Verde',
+                   ifelse(country == 'Curaçao', 'Curacao',
+                   ifelse(country == 'Micronesia, Federated States of', 'Micronesia',
+                   ifelse(country == 'United Kingdom', 'UK',
+                   ifelse(country == 'Iran, Islamic Republic of', 'Iran',
+                   ifelse(country == 'Korea, Republic of', 'South Korea',
+                   ifelse(country == "Lao People's Democratic Republic", 'Laos',
+                   ifelse(country == 'Moldova, Republic of', 'Moldova',
+                   ifelse(country == 'Macedonia, the former Yugoslav Republic of', 'Macedonia',
+                   ifelse(country == "Korea, Democratic People's Republic of", 'North Korea',
+                   ifelse(country == 'Syrian Arab Republic', 'Syria',
+                   ifelse(country == 'Taiwan, Province of China', 'Taiwan', 
+                   ifelse(country == 'Tanzania, United Republic of', 'Tanzania',
+                   ifelse(country == 'United States of America', 'USA',
+                   ifelse(country == 'Venezuela, Bolivarian Republic of', 'Venezuela', 
+                   ifelse(country == 'Viet Nam', 'Vietnam', 
+                   ifelse(country == 'Russian Federation', 'Russia', as.character(country))))))))))))))))))))))))
+
+
+joined.world.map2 <-left_join(x=map.world,
+                             y=final_df_3,
+                             by=c('region' = 'country'))
+
+joined.world.map2 %>% 
+  ggplot(.) +
+  geom_polygon(aes(x = long, y = lat, group = group, fill = `Forced Marriage Trafficking`), color="gray60") +
+  scale_fill_continuous(low = "#CCCCCC", high = "#e60000") +
+  ggtitle('Map of Forced Marriage Index Score',
+          subtitle = '2015 estimates') + 
+  labs(caption = 'Using 2014 value if 2015 is NA') + 
+  map.theme
+
+
+final_df_4 <- final_df %>% 
+  ungroup() %>% 
+  select(1:2, `Pimp Trafficker & Internal Sex Trafficking`) %>% 
+  spread(year, `Pimp Trafficker & Internal Sex Trafficking`) %>% 
+  mutate(`Pimp Trafficker & Internal Sex Trafficking` = ifelse(is.na(`2015`), `2014`, `2015`)) %>% 
+  select(1, 5) %>% 
+  mutate(country = ifelse(country == 'Antigua and Barbuda', 'Antigua',
+                   ifelse(country == 'Brunei Darussalam', 'Brunei',
+                   ifelse(country == "Côte d'Ivoire", 'Ivory Coast',
+                   ifelse(country == 'Congo, the Democratic Republic of the', 'Democratic Republic of the Congo',
+                   ifelse(country == 'Congo', 'Republic of Congo',
+                   ifelse(country == 'Cabo Verde', 'Cape Verde',
+                   ifelse(country == 'Curaçao', 'Curacao',
+                   ifelse(country == 'Micronesia, Federated States of', 'Micronesia',
+                   ifelse(country == 'United Kingdom', 'UK',
+                   ifelse(country == 'Iran, Islamic Republic of', 'Iran',
+                   ifelse(country == 'Korea, Republic of', 'South Korea',
+                   ifelse(country == "Lao People's Democratic Republic", 'Laos',
+                   ifelse(country == 'Moldova, Republic of', 'Moldova',
+                   ifelse(country == 'Macedonia, the former Yugoslav Republic of', 'Macedonia',
+                   ifelse(country == "Korea, Democratic People's Republic of", 'North Korea',
+                   ifelse(country == 'Syrian Arab Republic', 'Syria',
+                   ifelse(country == 'Taiwan, Province of China', 'Taiwan', 
+                   ifelse(country == 'Tanzania, United Republic of', 'Tanzania',
+                   ifelse(country == 'United States of America', 'USA',
+                   ifelse(country == 'Venezuela, Bolivarian Republic of', 'Venezuela', 
+                   ifelse(country == 'Viet Nam', 'Vietnam', 
+                   ifelse(country == 'Russian Federation', 'Russia', as.character(country))))))))))))))))))))))))
+
+joined.world.map3 <-left_join(x=map.world,
+                             y=final_df_4,
+                             by=c('region' = 'country'))
+
+joined.world.map3 %>% 
+  ggplot(.) +
+  geom_polygon(aes(x = long, y = lat, group = group, fill = `Pimp Trafficker & Internal Sex Trafficking`), color="gray60") +
+  scale_fill_continuous(low = "#CCCCCC", high = "#e60000") +
+  ggtitle('Map of Pimp Trafficker & Internal Sex Trafficking Score',
+          subtitle = '2015 estimates') + 
+  labs(caption = 'Using 2014 value if 2015 is NA') + 
+  map.theme + 
+  theme(plot.title = element_text(size=40))
+
+
+final_df_5 <- final_df %>% 
+  ungroup() %>% 
+  select(1:2, `Destination of Child Trafficking`) %>% 
+  spread(year, `Destination of Child Trafficking`) %>% 
+  mutate(`Destination of Child Trafficking` = ifelse(is.na(`2015`), `2014`, `2015`)) %>% 
+  select(1, 5) %>% 
+  mutate(country = ifelse(country == 'Antigua and Barbuda', 'Antigua',
+                   ifelse(country == 'Brunei Darussalam', 'Brunei',
+                   ifelse(country == "Côte d'Ivoire", 'Ivory Coast',
+                   ifelse(country == 'Congo, the Democratic Republic of the', 'Democratic Republic of the Congo',
+                   ifelse(country == 'Congo', 'Republic of Congo',
+                   ifelse(country == 'Cabo Verde', 'Cape Verde',
+                   ifelse(country == 'Curaçao', 'Curacao',
+                   ifelse(country == 'Micronesia, Federated States of', 'Micronesia',
+                   ifelse(country == 'United Kingdom', 'UK',
+                   ifelse(country == 'Iran, Islamic Republic of', 'Iran',
+                   ifelse(country == 'Korea, Republic of', 'South Korea',
+                   ifelse(country == "Lao People's Democratic Republic", 'Laos',
+                   ifelse(country == 'Moldova, Republic of', 'Moldova',
+                   ifelse(country == 'Macedonia, the former Yugoslav Republic of', 'Macedonia',
+                   ifelse(country == "Korea, Democratic People's Republic of", 'North Korea',
+                   ifelse(country == 'Syrian Arab Republic', 'Syria',
+                   ifelse(country == 'Taiwan, Province of China', 'Taiwan', 
+                   ifelse(country == 'Tanzania, United Republic of', 'Tanzania',
+                   ifelse(country == 'United States of America', 'USA',
+                   ifelse(country == 'Venezuela, Bolivarian Republic of', 'Venezuela', 
+                   ifelse(country == 'Viet Nam', 'Vietnam', 
+                   ifelse(country == 'Russian Federation', 'Russia', as.character(country))))))))))))))))))))))))
+
+
+joined.world.map4 <-left_join(x=map.world,
+                             y=final_df_5,
+                             by=c('region' = 'country'))
+
+joined.world.map4 %>% 
+  ggplot(.) +
+  geom_polygon(aes(x = long, y = lat, group = group, fill = `Destination of Child Trafficking`), color="gray60") +
+  scale_fill_continuous(low = "#CCCCCC", high = "#e60000") +
+  ggtitle('Map of Destination of Child Trafficking Score',
+          subtitle = '2015 estimates') + 
+  labs(caption = 'Using 2014 value if 2015 is NA') + 
+  map.theme + 
+  theme(plot.title = element_text(size=45))
+
+final_df_6 <- final_df %>% 
+  ungroup() %>% 
+  select(1:2, `Origin of Child Trafficking`) %>% 
+  spread(year, `Origin of Child Trafficking`) %>% 
+  mutate(`Origin of Child Trafficking` = ifelse(is.na(`2015`), `2014`, `2015`)) %>% 
+  select(1, 5) %>% 
+  mutate(country = ifelse(country == 'Antigua and Barbuda', 'Antigua',
+                   ifelse(country == 'Brunei Darussalam', 'Brunei',
+                   ifelse(country == "Côte d'Ivoire", 'Ivory Coast',
+                   ifelse(country == 'Congo, the Democratic Republic of the', 'Democratic Republic of the Congo',
+                   ifelse(country == 'Congo', 'Republic of Congo',
+                   ifelse(country == 'Cabo Verde', 'Cape Verde',
+                   ifelse(country == 'Curaçao', 'Curacao',
+                   ifelse(country == 'Micronesia, Federated States of', 'Micronesia',
+                   ifelse(country == 'United Kingdom', 'UK',
+                   ifelse(country == 'Iran, Islamic Republic of', 'Iran',
+                   ifelse(country == 'Korea, Republic of', 'South Korea',
+                   ifelse(country == "Lao People's Democratic Republic", 'Laos',
+                   ifelse(country == 'Moldova, Republic of', 'Moldova',
+                   ifelse(country == 'Macedonia, the former Yugoslav Republic of', 'Macedonia',
+                   ifelse(country == "Korea, Democratic People's Republic of", 'North Korea',
+                   ifelse(country == 'Syrian Arab Republic', 'Syria',
+                   ifelse(country == 'Taiwan, Province of China', 'Taiwan', 
+                   ifelse(country == 'Tanzania, United Republic of', 'Tanzania',
+                   ifelse(country == 'United States of America', 'USA',
+                   ifelse(country == 'Venezuela, Bolivarian Republic of', 'Venezuela', 
+                   ifelse(country == 'Viet Nam', 'Vietnam', 
+                   ifelse(country == 'Russian Federation', 'Russia', as.character(country))))))))))))))))))))))))
+
+
+joined.world.map5 <-left_join(x=map.world,
+                             y=final_df_6,
+                             by=c('region' = 'country'))
+
+joined.world.map5 %>% 
+  ggplot(.) +
+  geom_polygon(aes(x = long, y = lat, group = group, fill = `Origin of Child Trafficking`), color="gray60") +
+  scale_fill_continuous(low = "#CCCCCC", high = "#e60000") +
+  ggtitle('Map of Origin of Child Trafficking Score',
+          subtitle = '2015 estimates') + 
+  labs(caption = 'Using 2014 value if 2015 is NA') + 
+  map.theme
+
+
+final_df_7 <- final_df %>% 
+  ungroup() %>% 
+  select(1:2, `Labor Trafficking`) %>% 
+  spread(year, `Labor Trafficking`) %>% 
+  mutate(`Labor Trafficking` = ifelse(is.na(`2015`), `2014`, `2015`)) %>% 
+  select(1, 5) %>% 
+  mutate(country = ifelse(country == 'Antigua and Barbuda', 'Antigua',
+                   ifelse(country == 'Brunei Darussalam', 'Brunei',
+                   ifelse(country == "Côte d'Ivoire", 'Ivory Coast',
+                   ifelse(country == 'Congo, the Democratic Republic of the', 'Democratic Republic of the Congo',
+                   ifelse(country == 'Congo', 'Republic of Congo',
+                   ifelse(country == 'Cabo Verde', 'Cape Verde',
+                   ifelse(country == 'Curaçao', 'Curacao',
+                   ifelse(country == 'Micronesia, Federated States of', 'Micronesia',
+                   ifelse(country == 'United Kingdom', 'UK',
+                   ifelse(country == 'Iran, Islamic Republic of', 'Iran',
+                   ifelse(country == 'Korea, Republic of', 'South Korea',
+                   ifelse(country == "Lao People's Democratic Republic", 'Laos',
+                   ifelse(country == 'Moldova, Republic of', 'Moldova',
+                   ifelse(country == 'Macedonia, the former Yugoslav Republic of', 'Macedonia',
+                   ifelse(country == "Korea, Democratic People's Republic of", 'North Korea',
+                   ifelse(country == 'Syrian Arab Republic', 'Syria',
+                   ifelse(country == 'Taiwan, Province of China', 'Taiwan', 
+                   ifelse(country == 'Tanzania, United Republic of', 'Tanzania',
+                   ifelse(country == 'United States of America', 'USA',
+                   ifelse(country == 'Venezuela, Bolivarian Republic of', 'Venezuela', 
+                   ifelse(country == 'Viet Nam', 'Vietnam', 
+                   ifelse(country == 'Russian Federation', 'Russia', as.character(country))))))))))))))))))))))))
+
+joined.world.map6 <-left_join(x=map.world,
+                             y=final_df_7,
+                             by=c('region' = 'country'))
+
+joined.world.map6 %>% 
+  ggplot(.) +
+  geom_polygon(aes(x = long, y = lat, group = group, fill = `Labor Trafficking`), color="gray60") +
+  scale_fill_continuous(low = "#CCCCCC", high = "#e60000") +
+  ggtitle('Map of Labor Trafficking Score',
+          subtitle = '2015 estimates') + 
+  labs(caption = 'Using 2014 value if 2015 is NA') + 
+  map.theme
+
+
+final_df_8 <- final_df %>% 
+  ungroup() %>% 
+  select(1:2, `Child Domestic Servitude / Community / Non-Sexual`) %>% 
+  spread(year, `Child Domestic Servitude / Community / Non-Sexual`) %>% 
+  mutate(`Child Domestic Servitude / Community / Non-Sexual` = ifelse(is.na(`2015`), `2014`, `2015`)) %>% 
+  select(1, 5) %>% 
+  mutate(country = ifelse(country == 'Antigua and Barbuda', 'Antigua',
+                   ifelse(country == 'Brunei Darussalam', 'Brunei',
+                   ifelse(country == "Côte d'Ivoire", 'Ivory Coast',
+                   ifelse(country == 'Congo, the Democratic Republic of the', 'Democratic Republic of the Congo',
+                   ifelse(country == 'Congo', 'Republic of Congo',
+                   ifelse(country == 'Cabo Verde', 'Cape Verde',
+                   ifelse(country == 'Curaçao', 'Curacao',
+                   ifelse(country == 'Micronesia, Federated States of', 'Micronesia',
+                   ifelse(country == 'United Kingdom', 'UK',
+                   ifelse(country == 'Iran, Islamic Republic of', 'Iran',
+                   ifelse(country == 'Korea, Republic of', 'South Korea',
+                   ifelse(country == "Lao People's Democratic Republic", 'Laos',
+                   ifelse(country == 'Moldova, Republic of', 'Moldova',
+                   ifelse(country == 'Macedonia, the former Yugoslav Republic of', 'Macedonia',
+                   ifelse(country == "Korea, Democratic People's Republic of", 'North Korea',
+                   ifelse(country == 'Syrian Arab Republic', 'Syria',
+                   ifelse(country == 'Taiwan, Province of China', 'Taiwan', 
+                   ifelse(country == 'Tanzania, United Republic of', 'Tanzania',
+                   ifelse(country == 'United States of America', 'USA',
+                   ifelse(country == 'Venezuela, Bolivarian Republic of', 'Venezuela', 
+                   ifelse(country == 'Viet Nam', 'Vietnam', 
+                   ifelse(country == 'Russian Federation', 'Russia', as.character(country))))))))))))))))))))))))
+
+joined.world.map7 <-left_join(x=map.world,
+                             y=final_df_8,
+                             by=c('region' = 'country'))
+
+joined.world.map7 %>% 
+  ggplot(.) +
+  geom_polygon(aes(x = long, y = lat, group = group, fill = `Child Domestic Servitude / Community / Non-Sexual`), color="gray60") +
+  scale_fill_continuous(low = "#CCCCCC", high = "#e60000") +
+  ggtitle('Map of Community Traffickers / Child Domestic Servitude Score',
+          subtitle = '2015 estimates') + 
+  labs(caption = 'Using 2014 value if 2015 is NA') + 
+  map.theme + 
+  theme(plot.title = element_text(size=30))
+
+
+final_df_9 <- final_df %>% 
+  ungroup() %>% 
+  select(1:2, `Criminal & Family Trafficker / Destination Child Sex Tourism`) %>% 
+  spread(year, `Criminal & Family Trafficker / Destination Child Sex Tourism`) %>% 
+  mutate(`Criminal & Family Trafficker / Destination Child Sex Tourism` = ifelse(is.na(`2015`), `2014`, `2015`)) %>% 
+  select(1, 5) %>% 
+  mutate(country = ifelse(country == 'Antigua and Barbuda', 'Antigua',
+                   ifelse(country == 'Brunei Darussalam', 'Brunei',
+                   ifelse(country == "Côte d'Ivoire", 'Ivory Coast',
+                   ifelse(country == 'Congo, the Democratic Republic of the', 'Democratic Republic of the Congo',
+                   ifelse(country == 'Congo', 'Republic of Congo',
+                   ifelse(country == 'Cabo Verde', 'Cape Verde',
+                   ifelse(country == 'Curaçao', 'Curacao',
+                   ifelse(country == 'Micronesia, Federated States of', 'Micronesia',
+                   ifelse(country == 'United Kingdom', 'UK',
+                   ifelse(country == 'Iran, Islamic Republic of', 'Iran',
+                   ifelse(country == 'Korea, Republic of', 'South Korea',
+                   ifelse(country == "Lao People's Democratic Republic", 'Laos',
+                   ifelse(country == 'Moldova, Republic of', 'Moldova',
+                   ifelse(country == 'Macedonia, the former Yugoslav Republic of', 'Macedonia',
+                   ifelse(country == "Korea, Democratic People's Republic of", 'North Korea',
+                   ifelse(country == 'Syrian Arab Republic', 'Syria',
+                   ifelse(country == 'Taiwan, Province of China', 'Taiwan', 
+                   ifelse(country == 'Tanzania, United Republic of', 'Tanzania',
+                   ifelse(country == 'United States of America', 'USA',
+                   ifelse(country == 'Venezuela, Bolivarian Republic of', 'Venezuela', 
+                   ifelse(country == 'Viet Nam', 'Vietnam', 
+                   ifelse(country == 'Russian Federation', 'Russia', as.character(country))))))))))))))))))))))))
+
+joined.world.map8 <-left_join(x=map.world,
+                             y=final_df_9,
+                             by=c('region' = 'country'))
+
+joined.world.map8 %>% 
+  ggplot(.) +
+  geom_polygon(aes(x = long, y = lat, group = group, fill = `Criminal & Family Trafficker / Destination Child Sex Tourism`), color="gray60") +
+  scale_fill_continuous(low = "#CCCCCC", high = "#e60000") +
+  ggtitle('Map of Criminal & Family / Child Sex Tourism Score',
+          subtitle = '2015 estimates') + 
+  labs(caption = 'Using 2014 value if 2015 is NA') + 
+  map.theme + 
+  theme(plot.title = element_text(size=40))
+
+final_df_10 <- final_df %>% 
+  ungroup() %>% 
+  select(1:2, `Employer Trafficking & Dom Servitude / Debt Bondage`) %>% 
+  spread(year, `Employer Trafficking & Dom Servitude / Debt Bondage`) %>% 
+  mutate(`Employer Trafficking & Dom Servitude / Debt Bondage` = ifelse(is.na(`2015`), `2014`, `2015`)) %>% 
+  select(1, 5) %>% 
+  mutate(country = ifelse(country == 'Antigua and Barbuda', 'Antigua',
+                   ifelse(country == 'Brunei Darussalam', 'Brunei',
+                   ifelse(country == "Côte d'Ivoire", 'Ivory Coast',
+                   ifelse(country == 'Congo, the Democratic Republic of the', 'Democratic Republic of the Congo',
+                   ifelse(country == 'Congo', 'Republic of Congo',
+                   ifelse(country == 'Cabo Verde', 'Cape Verde',
+                   ifelse(country == 'Curaçao', 'Curacao',
+                   ifelse(country == 'Micronesia, Federated States of', 'Micronesia',
+                   ifelse(country == 'United Kingdom', 'UK',
+                   ifelse(country == 'Iran, Islamic Republic of', 'Iran',
+                   ifelse(country == 'Korea, Republic of', 'South Korea',
+                   ifelse(country == "Lao People's Democratic Republic", 'Laos',
+                   ifelse(country == 'Moldova, Republic of', 'Moldova',
+                   ifelse(country == 'Macedonia, the former Yugoslav Republic of', 'Macedonia',
+                   ifelse(country == "Korea, Democratic People's Republic of", 'North Korea',
+                   ifelse(country == 'Syrian Arab Republic', 'Syria',
+                   ifelse(country == 'Taiwan, Province of China', 'Taiwan', 
+                   ifelse(country == 'Tanzania, United Republic of', 'Tanzania',
+                   ifelse(country == 'United States of America', 'USA',
+                   ifelse(country == 'Venezuela, Bolivarian Republic of', 'Venezuela', 
+                   ifelse(country == 'Viet Nam', 'Vietnam', 
+                   ifelse(country == 'Russian Federation', 'Russia', as.character(country))))))))))))))))))))))))
+
+joined.world.map9 <-left_join(x=map.world,
+                             y=final_df_10,
+                             by=c('region' = 'country'))
+
+joined.world.map9 %>% 
+  ggplot(.) +
+  geom_polygon(aes(x = long, y = lat, group = group, fill = `Employer Trafficking & Dom Servitude / Debt Bondage`), color="gray60") +
+  scale_fill_continuous(low = "#CCCCCC", high = "#e60000") +
+  ggtitle('Map of Employment Agency Trafficking & Domestic Servitude / Debt Bondage Score',
+          subtitle = '2015 estimates') + 
+  labs(caption = 'Using 2014 value if 2015 is NA') + 
+  map.theme + 
+  theme(plot.title = element_text(size=26))
+
+
+final_df_11 <- final_df %>% 
+  ungroup() %>% 
+  select(1:2, `Militia-related Trafficking`) %>% 
+  spread(year, `Militia-related Trafficking`) %>% 
+  mutate(`Militia-related Trafficking` = ifelse(is.na(`2015`), `2014`, `2015`)) %>% 
+  select(1, 5) %>% 
+  mutate(country = ifelse(country == 'Antigua and Barbuda', 'Antigua',
+                   ifelse(country == 'Brunei Darussalam', 'Brunei',
+                   ifelse(country == "Côte d'Ivoire", 'Ivory Coast',
+                   ifelse(country == 'Congo, the Democratic Republic of the', 'Democratic Republic of the Congo',
+                   ifelse(country == 'Congo', 'Republic of Congo',
+                   ifelse(country == 'Cabo Verde', 'Cape Verde',
+                   ifelse(country == 'Curaçao', 'Curacao',
+                   ifelse(country == 'Micronesia, Federated States of', 'Micronesia',
+                   ifelse(country == 'United Kingdom', 'UK',
+                   ifelse(country == 'Iran, Islamic Republic of', 'Iran',
+                   ifelse(country == 'Korea, Republic of', 'South Korea',
+                   ifelse(country == "Lao People's Democratic Republic", 'Laos',
+                   ifelse(country == 'Moldova, Republic of', 'Moldova',
+                   ifelse(country == 'Macedonia, the former Yugoslav Republic of', 'Macedonia',
+                   ifelse(country == "Korea, Democratic People's Republic of", 'North Korea',
+                   ifelse(country == 'Syrian Arab Republic', 'Syria',
+                   ifelse(country == 'Taiwan, Province of China', 'Taiwan', 
+                   ifelse(country == 'Tanzania, United Republic of', 'Tanzania',
+                   ifelse(country == 'United States of America', 'USA',
+                   ifelse(country == 'Venezuela, Bolivarian Republic of', 'Venezuela', 
+                   ifelse(country == 'Viet Nam', 'Vietnam', 
+                   ifelse(country == 'Russian Federation', 'Russia', as.character(country))))))))))))))))))))))))
+
+joined.world.map10 <-left_join(x=map.world,
+                             y=final_df_11,
+                             by=c('region' = 'country'))
+
+joined.world.map10 %>% 
+  ggplot(.) +
+  geom_polygon(aes(x = long, y = lat, group = group, fill = `Militia-related Trafficking`), color="gray60") +
+  scale_fill_continuous(low = "#CCCCCC", high = "#e60000") +
+  ggtitle('Map of Militia-related Trafficking Score',
+          subtitle = '2015 estimates') + 
+  labs(caption = 'Using 2014 value if 2015 is NA') + 
+  map.theme
+
+final_df_12 <- final_df %>% 
+  ungroup() %>% 
+  select(1:2, `Transit for Sex & Labor Trafficking`) %>% 
+  spread(year, `Transit for Sex & Labor Trafficking`) %>% 
+  mutate(`Transit for Sex & Labor Trafficking` = ifelse(is.na(`2015`), `2014`, `2015`)) %>% 
+  select(1, 5) %>% 
+  mutate(country = ifelse(country == 'Antigua and Barbuda', 'Antigua',
+                   ifelse(country == 'Brunei Darussalam', 'Brunei',
+                   ifelse(country == "Côte d'Ivoire", 'Ivory Coast',
+                   ifelse(country == 'Congo, the Democratic Republic of the', 'Democratic Republic of the Congo',
+                   ifelse(country == 'Congo', 'Republic of Congo',
+                   ifelse(country == 'Cabo Verde', 'Cape Verde',
+                   ifelse(country == 'Curaçao', 'Curacao',
+                   ifelse(country == 'Micronesia, Federated States of', 'Micronesia',
+                   ifelse(country == 'United Kingdom', 'UK',
+                   ifelse(country == 'Iran, Islamic Republic of', 'Iran',
+                   ifelse(country == 'Korea, Republic of', 'South Korea',
+                   ifelse(country == "Lao People's Democratic Republic", 'Laos',
+                   ifelse(country == 'Moldova, Republic of', 'Moldova',
+                   ifelse(country == 'Macedonia, the former Yugoslav Republic of', 'Macedonia',
+                   ifelse(country == "Korea, Democratic People's Republic of", 'North Korea',
+                   ifelse(country == 'Syrian Arab Republic', 'Syria',
+                   ifelse(country == 'Taiwan, Province of China', 'Taiwan', 
+                   ifelse(country == 'Tanzania, United Republic of', 'Tanzania',
+                   ifelse(country == 'United States of America', 'USA',
+                   ifelse(country == 'Venezuela, Bolivarian Republic of', 'Venezuela', 
+                   ifelse(country == 'Viet Nam', 'Vietnam', 
+                   ifelse(country == 'Russian Federation', 'Russia', as.character(country))))))))))))))))))))))))
+
+joined.world.map11 <-left_join(x=map.world,
+                             y=final_df_12,
+                             by=c('region' = 'country'))
+
+joined.world.map11 %>% 
+  ggplot(.) +
+  geom_polygon(aes(x = long, y = lat, group = group, fill = `Transit for Sex & Labor Trafficking`), color="gray60") +
+  scale_fill_continuous(low = "#CCCCCC", high = "#e60000") +
+  ggtitle('Map of Transit Country of Trafficking Score',
+          subtitle = '2015 estimates') + 
+  labs(caption = 'Using 2014 value if 2015 is NA') + 
+  map.theme
+```
+
+
+
+
+```{r}
+library(rgdal)        # for readOGR(...)
+
+world      <- readOGR(dsn=".",
+                      layer="world_country_admin_boundary_shapefile_with_fips_codes")
+
+countries <- world@data
+countries <- cbind(id=rownames(countries),countries)
+countries <- merge(countries,gtd.recent, 
+                   by.x="CNTRY_NAME", by.y="country_txt", all.x=T)
+map.df <- fortify(world)
+map.df <- merge(map.df,countries, by="id")
+ggplot(map.df, aes(x=long,y=lat,group=group)) +
+  geom_polygon(aes(fill=nkill))+
+  geom_path(colour="grey50")+
+  scale_fill_gradientn(name="Deaths",
+                       colours=rev(brewer.pal(9,"Spectral")),
+                       na.value="white")+
+  coord_fixed()+labs(x="",y="")
+```
+
+
+
+
+# CFA Testing - April 2017
+
+```{r load_lavaan, include=FALSE, echo=TRUE}
+library(lavaan)
+```
+
+```{r cfa_testing, include=TRUE, echo=TRUE}
+#specify model
+test.cfa <- " origin =~ O_labor + O_childlabor + O_sex + O_childsex + 
+                        O_cstourism + O_domestic + O_begging 
+              transit =~ T_labor + T_childlabor + T_sex + T_childsex + 
+                          T_cstourism + T_domestic + T_begging
+              destination =~ D_labor + D_childlabor + D_sex + D_childcse + 
+                              D_domestic  + D_begging
+              trafficker =~ fam_trafficker + teac_trafficker + 
+                            brok_trafficker + empl_trafficker + bus_trafficker + 
+                            crim_trafficker + militia_trafficker + govt_trafficker + 
+                            rel_trafficker + pimp_trafficker
+              internal =~ I_labor + I_childlabor + I_sex + I_childsex + I_cstourism + 
+                          I_domestic + I_begging"
+
+#note: diplo_trafficker not included in the model, because it said the var was not found
+#need to look into this
+
+#fit a full CFA model
+fit.cfa <- cfa(test.cfa, data = trafprevComponents)
+summary(fit.cfa, fit.measures = TRUE)
+
+```
+
+# Analysis of Observations  
+
+## Cluster Analysis  
+
+
+```{r wssplot_function, include=TRUE, echo=FALSE}
+wssplot <- function(data, nc=15, seed=1234){
+  wss <- (nrow(data)-1)*sum(apply(data,2,var))
+  for (i in 2:nc){
+    set.seed(seed)
+    wss[i] <- sum(kmeans(data, centers=i)$withinss)}
+  plot(1:nc, wss, type="b", xlab="Number of Clusters",
+       ylab="Within groups sum of squares")}
+```
+
+```{r wssplot_HTCdata, include=TRUE, echo=TRUE}
+wssplot(HTCdata_v2 %>% select(3:42))
+```
+
+
+```{r NbClust_HTCdata, include=TRUE, echo=TRUE}
+library(NbClust)
+set.seed(1234)
+nc <- NbClust(HTCdata_v2 %>% select(3:42), min.nc = 3, max.nc = 8, method="kmeans")
+```
+
+
+```{r print_nc, include=TRUE, echo=TRUE}
+print(nc)
+```
+
+```{r cluster_number_test, include=TRUE, echo=TRUE, fig.height=6.2}
+num_clust <- data.frame(nc$Best.nc[1,]) %>% 
+  rename(best_cluster = nc.Best.nc.1...) %>% 
+  group_by(best_cluster) %>% 
+  summarise(count=n())
+
+num_clust %>% 
+  filter(best_cluster != 0) %>% 
+  ggplot(.) + 
+  geom_col(aes(x=best_cluster,
+               y=count)) + 
+  ggtitle('How many clusters is best for the HTC data?') + 
+  labs(x='Number of clusters',
+       y='Count of optimal criteria') + 
+  my.theme
+
+```
+
+```{r run_cluster_1, include=TRUE}
+kmeansTest_5clust <- kmeans(HTCdata_v2 %>% select(3:42), 5, nstart = 10)
+#kmeansTest_5clust$cluster
+```
+
+```{r}
+kmeansTest_3clust <- kmeans(HTCdata_v2 %>% select(3:42), 3, nstart = 10)
+#kmeansTest_3clust$cluster
+```
+
+
+```{r}
+cluster_size <- data.frame(kmeansTest_5clust$size) %>% mutate(`Cluster Number` = 1:n())
+print(cluster_size)
+```
+
+```{r}
+HTCdata_5cluster <- cbind(HTCdata_v2, kmeansTest_5clust$cluster) %>% 
+  rename(`5cluster_membership` = `kmeansTest_5clust$cluster`)
+
+HTCdata_clusters <- cbind(HTCdata_5cluster, kmeansTest_3clust$cluster) %>% 
+  rename(`3cluster_membership` = `kmeansTest_3clust$cluster`)
+```
+
+
+```{r fig.height=6.2}
+set.seed(1234)
+autoplot(kmeans(HTCdata_v2 %>% select(3:42), 3, nstart = 10), data=HTCdata_v2) + 
+  my.theme
+```
+
+```{r fig.height=6.2}
+set.seed(1234)
+autoplot(kmeans(HTCdata_v2 %>% select(3:42), 5, nstart = 10), data=HTCdata_v2) + 
+  my.theme
+```
+
+```{r fig.height=15}
+HTCdata_5clust_rep_values <- aggregate(HTCdata_clusters %>% select(3:61), 
+                                      by=list(cluster=kmeansTest_5clust$cluster), 
+                                      FUN=sum)
+
+HTCdata_3clust_rep_values <- aggregate(HTCdata_clusters %>% select(3:61), 
+                                      by=list(cluster=kmeansTest_3clust$cluster), 
+                                      FUN=sum)
+
+library(tidyverse)
+
+HTCdata_3clust_rep_values %>% 
+  gather(variable, value, 2:60) %>% 
+  mutate(cluster_text = ifelse(cluster == 1, 'One',
+         ifelse(cluster == 2, 'Two', 'Three'))) %>% 
+  ggplot(.) + 
+  geom_tile(aes(x=reorder(cluster_text, cluster),
+                y=variable,
+                fill=value), color='gray90') + 
+  geom_text(aes(x=reorder(cluster_text, cluster),
+                y=variable,
+                label=value), fontface='bold', color="white", size=6) + 
+  ggtitle('What do clusters represent?') + 
+  labs(x='Cluster number',
+       y='Variable') + 
+  my.theme + 
+  scale_x_discrete(position = 'top') + 
+  theme(legend.position = 'none',
+        axis.ticks = element_blank(),
+        axis.text = element_text(size=15, face='bold')) + 
+  scale_fill_continuous(low = 'lightgray', high = 'red4')
+
+```
+
+
+
+
+```{r fig.height=15}
+HTCdata_5clust_rep_values %>% 
+  gather(variable, value, 2:60) %>% 
+  mutate(cluster_text = ifelse(cluster == 1, 'One',
+                        ifelse(cluster == 2, 'Two',
+                        ifelse(cluster == 3, 'Three',
+                        ifelse(cluster == 4, 'Four', 'Five'))))) %>% 
+  ggplot(.) + 
+  geom_tile(aes(x=reorder(cluster_text, cluster),
+                y=variable,
+                fill=value), color='gray90') + 
+  geom_text(aes(x=reorder(cluster_text, cluster),
+                y=variable,
+                label=value), fontface='bold', color="white", size=6) + 
+  ggtitle('What do clusters represent?') + 
+  labs(x='Cluster number',
+       y='Variable') + 
+  my.theme + 
+  scale_x_discrete(position = 'top') + 
+  theme(legend.position = 'none',
+        axis.ticks = element_blank(),
+        axis.text = element_text(size=15, face='bold')) + 
+  scale_fill_continuous(low = 'lightgray', high = 'red4')
+```
+
